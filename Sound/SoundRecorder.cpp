@@ -2,7 +2,7 @@
 SoundRecorder - Simple class to record sound from a capture device to a
 sound file on the local file system. Uses ALSA under Linux, and the Core
 Audio frameworks under Mac OS X.
-Copyright (c) 2008 Oliver Kreylos
+Copyright (c) 2008-2009 Oliver Kreylos
 
 This file is part of the Basic Sound Library (Sound).
 
@@ -25,6 +25,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <math.h>
 #endif
 #include <string.h>
+#include <iostream>
+#include <stdexcept>
 #include <Misc/ThrowStdErr.h>
 #ifdef __DARWIN__
 #include <CoreFoundation/CFURL.h>
@@ -82,20 +84,21 @@ void SoundRecorder::writeWAVHeader(void)
 
 void* SoundRecorder::recordingThreadMethod(void)
 	{
+	Threads::Thread::setCancelState(Threads::Thread::CANCEL_ENABLE);
+	Threads::Thread::setCancelType(Threads::Thread::CANCEL_ASYNCHRONOUS);
+	
 	/* Read buffers worth of sound data from the PCM device until interrupted: */
 	while(true)
 		{
 		/* Read pending sound data, up to the buffer size: */
-		snd_pcm_sframes_t numFramesRead=snd_pcm_readi(pcmDevice,sampleBuffer,snd_pcm_uframes_t(sampleBufferSize));
-		if(numFramesRead>0)
-			{
-			/* Write the buffer to the file: */
-			outputFile.write(sampleBuffer,size_t(numFramesRead)*bytesPerFrame);
-			numRecordedFrames+=numFramesRead;
-			}
+		size_t numFramesRead=pcmDevice.read(sampleBuffer,sampleBufferSize);
+		
+		/* Write the buffer to the file: */
+		outputFile.write(sampleBuffer,numFramesRead*bytesPerFrame);
+		numRecordedFrames+=numFramesRead;
 		}
 	
-	return 0; // Never reached; just to make compiler happy
+	return 0;
 	}
 
 #endif
@@ -105,7 +108,7 @@ SoundRecorder::SoundRecorder(const SoundDataFormat& sFormat,const char* outputFi
 	#ifdef SOUND_USE_ALSA
 	 outputFileFormat(RAW),
 	 bytesPerFrame(0),
-	 pcmDevice(0),
+	 pcmDevice("default",true),
 	 outputFile(outputFileName,"wb",Misc::File::DontCare),
 	 sampleBufferSize(0),sampleBuffer(0),
 	 numRecordedFrames(0),
@@ -147,24 +150,15 @@ SoundRecorder::SoundRecorder(const SoundDataFormat& sFormat,const char* outputFi
 	/* Calculate the number of bytes per frame: */
 	bytesPerFrame=format.bytesPerSample*format.samplesPerFrame;
 	
-	int error;
-	
-	/* Open the default PCM capturing device: */
-	error=snd_pcm_open(&pcmDevice,"default",SND_PCM_STREAM_CAPTURE,0);
-	if(error<0)
-		Misc::throwStdErr("SoundRecorder::SoundRecorder: Error %s while opening PCM device",snd_strerror(error));
-	
 	/* Set the PCM device's parameters according to the sound data format: */
-	error=format.setPCMDeviceParameters(pcmDevice);
-	if(error<0)
-		{
-		snd_pcm_close(pcmDevice);
-		Misc::throwStdErr("SoundRecorder::SoundRecorder: Error %s while setting PCM device parameters",snd_strerror(error));
-		}
+	pcmDevice.setSoundDataFormat(format);
 	
 	/* Create a sample buffer holding a quarter second of sound: */
 	sampleBufferSize=(size_t(format.framesPerSecond)*250+500)/1000;
-	sampleBuffer=new char[sampleBufferSize*size_t(format.samplesPerFrame)*size_t(format.bytesPerSample)];
+	sampleBuffer=new char[sampleBufferSize*bytesPerFrame];
+	
+	/* Prepare the device for recording: */
+	pcmDevice.prepare();
 	
 	#endif
 	}
@@ -180,15 +174,12 @@ SoundRecorder::~SoundRecorder(void)
 		recordingThread.join();
 		
 		/* Stop the PCM device: */
-		snd_pcm_drop(pcmDevice);
+		pcmDevice.drop();
 		
 		/* Write the final audio file header if necessary: */
 		if(outputFileFormat==WAV)
 			writeWAVHeader();
 		}
-	
-	/* Close the PCM device: */
-	snd_pcm_close(pcmDevice);
 	
 	/* Delete the sample buffer: */
 	delete[] sampleBuffer;
@@ -217,9 +208,7 @@ void SoundRecorder::start(void)
 		writeWAVHeader();
 	
 	/* Start the PCM device: */
-	int error;
-	if((error=snd_pcm_start(pcmDevice))<0)
-		Misc::throwStdErr("SoundRecorder::start: Could not start recording due to error %s",snd_strerror(error));
+	pcmDevice.start();
 	
 	/* Start the background recording thread: */
 	recordingThread.start(this,&SoundRecorder::recordingThreadMethod);
@@ -237,12 +226,12 @@ void SoundRecorder::stop(void)
 	
 	#ifdef SOUND_USE_ALSA
 	
-	/* Stop the background recording thread: */
+	/* Kill the background recording thread: */
 	recordingThread.cancel();
 	recordingThread.join();
 	
 	/* Stop the PCM device: */
-	snd_pcm_drop(pcmDevice);
+	pcmDevice.drop();
 	
 	/* Write the final audio file header if necessary: */
 	if(outputFileFormat==WAV)
