@@ -1,7 +1,7 @@
 /***********************************************************************
 ImageReader - Abstract base class to read images from files in a variety
 of image file formats.
-Copyright (c) 2012 Oliver Kreylos
+Copyright (c) 2012-2013 Oliver Kreylos
 
 This file is part of the Image Handling Library (Images).
 
@@ -29,58 +29,24 @@ Methods of class ImageReader:
 ****************************/
 
 ImageReader::ImageReader(IO::FilePtr sFile)
-	:file(sFile),
-	 numImages(0),imageSpecs(0)
+	:file(sFile)
 	{
-	canvasSize[0]=canvasSize[1]=0;
+	/* Initialize the canvas size: */
+	canvasSize[0]=canvasSize[1]=0U;
+	
+	/* Initialize the image specification: */
+	imageSpec.offset[0]=imageSpec.offset[1]=0U;
+	imageSpec.size[0]=imageSpec.size[1]=0U;
+	imageSpec.colorSpace=Grayscale;
+	imageSpec.hasAlpha=false;
+	imageSpec.numChannels=0;
+	imageSpec.channelSpecs=0;
 	}
 
 ImageReader::~ImageReader(void)
 	{
-	delete[] imageSpecs;
-	}
-
-Image<GLubyte,1> ImageReader::readGray8(void)
-	{
-	/* Read the image component planes: */
-	const ImageSpec& spec=imageSpecs[0];
-	ImagePlane* planes=readSubImagePlanes();
-	
-	/* Create the result image: */
-	Image<GLubyte,1> result(spec.size[0],spec.size[1]);
-	Image<GLubyte,1>::Color* rPtr=result.modifyPixels();
-	
-	/* Copy the image planes into the result image: */
-	if(spec.colorSpace==Grayscale)
-		{
-		/* Copy the first image component: */
-		if(planes[0].pixelSize==1)
-			{
-			if(spec.signed)
-				{
-				}
-			else
-				{
-				if(spec.bitsPerComponent==8)
-					{
-					/* Copy the plane 1:1: */
-					const GLubyte* pRowPtr=static_cast<GLubyte*>(planes[0].basePtr);
-					for(unsigned int y=0;y<spec.size[1];++y,pRowPtr+=planes[0].rowStride)
-						{
-						const GLubyte* pPtr=pRowPtr;
-						for(unsigned int x=0;x<spec.size[0];++x,pPtr+=planes[0].pixelStride,++rPtr)
-							(*rPtr)[0]=*pPtr;
-						}
-					}
-				else
-					{
-					}
-				}
-			}
-		}
-	else if(spec.colorSpace==RGB)
-		{
-		}
+	/* Delete the image specification: */
+	delete[] imageSpec.channelSpecs;
 	}
 
 }
