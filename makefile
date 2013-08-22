@@ -29,7 +29,7 @@
 # installation directory.
 ########################################################################
 
-INSTALLDIR := $(HOME)/Vrui-2.6
+INSTALLDIR := $(HOME)/Vrui-3.0
 
 ########################################################################
 # Please do not change the following lines
@@ -137,9 +137,9 @@ VRDEVICES_USE_BLUETOOTH = $(SYSTEM_HAVE_BLUETOOTH)
 ########################################################################
 
 # Specify version of created dynamic shared libraries
-VRUI_VERSION = 2006002
-MAJORLIBVERSION = 2
-MINORLIBVERSION = 6
+VRUI_VERSION = 3000002
+MAJORLIBVERSION = 3
+MINORLIBVERSION = 0
 VRUI_NAME := Vrui-$(MAJORLIBVERSION).$(MINORLIBVERSION)
 
 # Set additional debug options
@@ -290,7 +290,8 @@ VRDEVICES_IGNORE_SOURCES = VRDeviceDaemon/VRDevices/Joystick.cpp \
                            VRDeviceDaemon/VRDevices/Wiimote.cpp \
                            VRDeviceDaemon/VRDevices/WiimoteTracker.cpp \
                            VRDeviceDaemon/VRDevices/RazerHydra.cpp \
-                           VRDeviceDaemon/VRDevices/RazerHydraDevice.cpp
+                           VRDeviceDaemon/VRDevices/RazerHydraDevice.cpp \
+                           VRDeviceDaemon/VRDevices/OculusRift.cpp
 
 VRDEVICES_SOURCES = $(filter-out $(VRDEVICES_IGNORE_SOURCES),$(wildcard VRDeviceDaemon/VRDevices/*.cpp))
 ifneq ($(VRDEVICES_USE_INPUT_ABSTRACTION),0)
@@ -300,7 +301,8 @@ ifneq ($(VRDEVICES_USE_BLUETOOTH),0)
   VRDEVICES_SOURCES += VRDeviceDaemon/VRDevices/WiimoteTracker.cpp
 endif
 ifneq ($(SYSTEM_HAVE_LIBUSB1),0)
-  VRDEVICES_SOURCES += VRDeviceDaemon/VRDevices/RazerHydraDevice.cpp
+  VRDEVICES_SOURCES += VRDeviceDaemon/VRDevices/RazerHydraDevice.cpp \
+                       VRDeviceDaemon/VRDevices/OculusRift.cpp
 endif
 
 VRDEVICESDIREXT = VRDevices
@@ -339,6 +341,9 @@ EXECUTABLES += $(EXEDIR)/XBackground \
                $(EXEDIR)/MeasureEnvironment \
                $(EXEDIR)/ScreenCalibrator \
                $(EXEDIR)/AlignTrackingMarkers
+ifneq ($(SYSTEM_HAVE_LIBUSB1),0)
+  EXECUTABLES += $(EXEDIR)/OculusCalibrator
+endif
 
 # Set the name of the makefile fragment:
 ifdef DEBUG
@@ -815,9 +820,11 @@ libGLSupport: $(call LIBRARYNAME,libGLSupport)
 # The OpenGL/GLX Support Library (GLXSupport)
 #
 
-GLXSUPPORT_HEADERS = GL/GLWindow.h
+GLXSUPPORT_HEADERS = GL/GLContext.h \
+                     GL/GLWindow.h
 
-GLXSUPPORT_SOURCES = GL/GLWindow.cpp
+GLXSUPPORT_SOURCES = GL/GLContext.cpp \
+                     GL/GLWindow.cpp
 
 $(GLXSUPPORT_SOURCES): config
 
@@ -1008,7 +1015,10 @@ VIDEO_HEADERS = Video/Config.h \
                 Video/VideoDevice.h \
                 Video/Colorspaces.h \
                 Video/ImageExtractorRGB8.h \
+                Video/ImageExtractorY10B.h \
                 Video/ImageExtractorYUYV.h \
+                Video/ImageExtractorUYVY.h \
+                Video/ImageExtractorYV12.h \
                 Video/BayerPattern.h \
                 Video/ImageExtractorBA81.h \
                 Video/YpCbCr420Texture.h \
@@ -1040,7 +1050,10 @@ endif
 VIDEO_SOURCES = Video/VideoDataFormat.cpp \
                 Video/VideoDevice.cpp \
                 Video/ImageExtractorRGB8.cpp \
+                Video/ImageExtractorY10B.cpp \
                 Video/ImageExtractorYUYV.cpp \
+                Video/ImageExtractorUYVY.cpp \
+                Video/ImageExtractorYV12.cpp \
                 Video/ImageExtractorBA81.cpp \
                 Video/YpCbCr420Texture.cpp \
                 Video/VideoPane.cpp
@@ -1295,6 +1308,7 @@ endif
 VRDEVICEDAEMON_SOURCES = VRDeviceDaemon/VRDevice.cpp \
                          VRDeviceDaemon/VRCalibrator.cpp \
                          VRDeviceDaemon/VRDeviceManager.cpp \
+                         Vrui/Internal/VRDeviceDescriptor.cpp \
                          Vrui/Internal/VRDevicePipe.cpp \
                          VRDeviceDaemon/VRDeviceServer.cpp \
                          VRDeviceDaemon/VRDeviceDaemon.cpp
@@ -1332,6 +1346,7 @@ $(VRDEVICESDIR)/libWiimoteTracker.$(PLUGINFILEEXT): PLUGINDEPENDENCIES += $(BLUE
 $(VRDEVICESDIR)/libWiimoteTracker.$(PLUGINFILEEXT): $(OBJDIR)/VRDeviceDaemon/VRDevices/Wiimote.o \
                                                     $(OBJDIR)/VRDeviceDaemon/VRDevices/WiimoteTracker.o
 
+$(VRDEVICESDIR)/libRazerHydraDevice.$(PLUGINFILEEXT): PACKAGES += MYUSB
 $(VRDEVICESDIR)/libRazerHydraDevice.$(PLUGINFILEEXT): PLUGINDEPENDENCIES += $(MYUSB_LIBDIR) $(MYUSB_LIBS)
 ifneq ($(SYSTEM_HAVE_RPATH),0)
   ifneq ($(USE_RPATH),0)
@@ -1340,6 +1355,14 @@ ifneq ($(SYSTEM_HAVE_RPATH),0)
 endif
 $(VRDEVICESDIR)/libRazerHydraDevice.$(PLUGINFILEEXT): $(OBJDIR)/VRDeviceDaemon/VRDevices/RazerHydra.o \
                                                       $(OBJDIR)/VRDeviceDaemon/VRDevices/RazerHydraDevice.o
+
+$(VRDEVICESDIR)/libOculusRift.$(PLUGINFILEEXT): PACKAGES += MYUSB
+$(VRDEVICESDIR)/libOculusRift.$(PLUGINFILEEXT): PLUGINDEPENDENCIES += $(MYUSB_LIBDIR) $(MYUSB_LIBS)
+ifneq ($(SYSTEM_HAVE_RPATH),0)
+  ifneq ($(USE_RPATH),0)
+    $(VRDEVICESDIR)/libOculusRift.$(PLUGINFILEEXT): PLUGINLINKFLAGS += -Wl,-rpath=$(MYUSB_BASEDIR)/$(LIBEXT)
+  endif
+endif
 
 # Implicit rule for creating plugins:
 $(VRDEVICESDIR)/lib%.$(PLUGINFILEEXT): PACKAGES += MYGEOMETRY MYCOMM MYTHREADS MYMISC
@@ -1464,6 +1487,18 @@ $(EXEDIR)/AlignTrackingMarkers: EXTRACINCLUDEFLAGS += -ICalibration
 $(EXEDIR)/AlignTrackingMarkers: $(ALIGNTRACKINGMARKERS_SOURCES:%.cpp=$(OBJDIR)/%.o)
 .PHONY: AlignTrackingMarkers
 AlignTrackingMarkers: $(EXEDIR)/AlignTrackingMarkers
+
+#
+# The Oculus Rift tracker calibrator:
+#
+
+Calibration/OculusCalibrator.cpp: config
+
+$(EXEDIR)/OculusCalibrator: PACKAGES += MYVRUI MYUSB
+$(EXEDIR)/OculusCalibrator: EXTRACINCLUDEFLAGS += -ICalibration
+$(EXEDIR)/OculusCalibrator: $(OBJDIR)/Calibration/OculusCalibrator.o
+.PHONY: OculusCalibrator
+OculusCalibrator: $(EXEDIR)/OculusCalibrator
 
 ########################################################################
 # Specify installation rules for header files, libraries, executables,
